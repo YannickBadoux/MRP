@@ -2,7 +2,7 @@
 from amuse.units import units, constants
 from amuse.lab import Particles, Particle
 from amuse.ext.orbital_elements import generate_binaries, orbital_elements
-from amuse.io import write_set_to_file
+from amuse.io import write_set_to_file, read_set_from_file
 from amuse.units.optparse import OptionParser
 
 import matplotlib.pyplot as plt
@@ -21,11 +21,36 @@ def hill_radius(M, m, a):
     '''
     return a * (m / (3 * M))**(1/3)
 
-def generate_initial_conditions(M, m_pl, a_pl, m_moon, plot=False, save_path='initial_conditions.amuse'):
+def critical_velocity(bodies=None, m1=None, m2=None, m3=None, a=None):
+
+    if bodies is not None:
+        try:
+            host_star = bodies[bodies.name == 'host_star'][0]
+            planet = bodies[bodies.name == 'planet'][0]
+            field_star = bodies[bodies.name == 'field_star'][0]
+
+            m1 = host_star.mass
+            m2 = planet.mass
+            m3 = field_star.mass
+            a = orbital_elements(host_star, planet)[2]
+        except:
+            raise ValueError("Bodies does not contain the correct particles")
+        
+    elif bodies is None:
+        if m1 is None or m2 is None or m3 is None or a is None:
+            raise ValueError("If bodies is None, m1, m2, m3, and a must be provided")
+    
+    vc2 = constants.G * (m1*m2*(m1+m2+m3)) / (m3*(m1+m2)*a)
+
+    return vc2.sqrt()
+
+def generate_initial_conditions(M, m_pl, a_pl, m_moon, i_moon=0|units.deg, f_pl=0|units.deg,
+                                plot=False, save_path='initial_conditions.amuse'):
     #initialize host star and planet particles
     host_star, planet = generate_binaries(M,
                                           m_pl,
-                                          a_pl)
+                                          a_pl,
+                                          true_anomaly=f_pl)
     host_star.name = "host_star"
     planet.name = "planet"
 
@@ -34,7 +59,7 @@ def generate_initial_conditions(M, m_pl, a_pl, m_moon, plot=False, save_path='in
     _, moon = generate_binaries(planet.mass,
                                  m_moon,
                                  a_moon,
-                                 inclination=0|units.deg)
+                                 inclination=i_moon)
     
     moon.name = "moon0"
     moon.position += planet.position
@@ -47,6 +72,10 @@ def generate_initial_conditions(M, m_pl, a_pl, m_moon, plot=False, save_path='in
     bodies.add_particle(host_star)
     bodies.add_particle(planet)
     bodies.add_particle(moon)
+
+    #put host_star at the origin
+    bodies.position -= host_star.position
+    bodies.velocity -= host_star.velocity
 
     #plot the initial conditions if plot=True
     if plot:
@@ -70,13 +99,26 @@ def add_encounter(bodies, M, impact_parameter, v_inf, phi, theta, psi):
     planet = bodies[bodies.name == 'planet'][0]
     a_pl = orbital_elements(bodies[0], planet)[2].value_in(units.AU)
 
+    #place field star at the correct distance
     initial_distance = 20 * a_pl
     field_star.position = [initial_distance * np.cos(phi) * np.sin(theta),
                            initial_distance * np.sin(phi) * np.sin(theta),
                            initial_distance * np.cos(theta)] | units.AU
-    field_star.position += [impact_parameter.value_in(units.AU) * np.cos(psi),
-                            impact_parameter.value_in(units.AU) * np.sin(psi),
-                            0] | units.AU
+    
+    #change the position of the field star so the impact parameter is correct
+    impact_parameter = impact_parameter.value_in(units.AU)
+    position_change = np.array([impact_parameter * np.cos(psi),
+                                impact_parameter * np.sin(psi),
+                                0])
+    rotation_matrix = np.array([[np.cos(phi) * np.cos(theta), -np.sin(phi), np.cos(phi) * np.sin(theta)],
+                                [np.sin(phi) * np.cos(theta), np.cos(phi), np.sin(phi) * np.sin(theta)],
+                                [-np.sin(theta), 0, np.cos(theta)]])
+    field_star.position += np.dot(rotation_matrix, position_change) | units.AU
+    
+    #set the velocity of the field star
+    field_star.velocity = [-v_inf.value_in(units.kms) * np.cos(phi) * np.sin(theta),
+                           -v_inf.value_in(units.kms) * np.sin(phi) * np.sin(theta),
+                           -v_inf.value_in(units.kms) * np.cos(theta)] | units.kms
     
     bodies.add_particle(field_star)
     return bodies
@@ -111,4 +153,3 @@ if __name__ == '__main__':
                                          options.m_moon,
                                          options.plot,
                                          options.save_path)
-
