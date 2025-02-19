@@ -22,7 +22,7 @@ def hill_radius(M, m, a):
     return a * (m / (3 * M))**(1/3)
 
 def critical_velocity(bodies=None, m1=None, m2=None, m3=None, a=None):
-
+    '''Calculate the critical velocity for a given system.'''
     if bodies is not None:
         try:
             host_star = bodies[bodies.name == 'host_star'][0]
@@ -44,8 +44,8 @@ def critical_velocity(bodies=None, m1=None, m2=None, m3=None, a=None):
 
     return vc2.sqrt()
 
-def generate_initial_conditions(M, m_pl, a_pl, m_moon, i_moon=0|units.deg, f_pl=0|units.deg,
-                                plot=False, save_path='initial_conditions.amuse'):
+def generate_initial_conditions(M, m_pl, a_pl, m_moon=0.01495|units.MEarth, i_moon=0|units.deg, f_pl=0|units.deg,
+                                plot=False, save_path='initial_conditions.amuse', n_moons=1):
     #initialize host star and planet particles
     host_star, planet = generate_binaries(M,
                                           m_pl,
@@ -54,24 +54,27 @@ def generate_initial_conditions(M, m_pl, a_pl, m_moon, i_moon=0|units.deg, f_pl=
     host_star.name = "host_star"
     planet.name = "planet"
 
-    #place outermost moon at 1/3 of the Hill radius
-    a_moon = 1/3*hill_radius(M, m_pl, a_pl)
-    _, moon = generate_binaries(planet.mass,
-                                 m_moon,
-                                 a_moon,
-                                 inclination=i_moon)
-    
-    moon.name = "moon0"
-    moon.position += planet.position
-    moon.velocity += planet.velocity
+    if n_moons > 0:
+        #place outermost moon at 1/3 of the Hill radius
+        a_moon = 1/3*hill_radius(M, m_pl, a_pl)
 
-    #TODO: add code to add more moons in a resonant chain
+        _, moon = generate_binaries(planet.mass,
+                                    m_moon,
+                                    a_moon,
+                                    inclination=i_moon)
+        
+        moon.name = "moon0"
+        moon.position += planet.position
+        moon.velocity += planet.velocity
+
+        #TODO: add code to add more moons in a resonant chain
 
     #add all to a single particle set
     bodies = Particles()
     bodies.add_particle(host_star)
     bodies.add_particle(planet)
-    bodies.add_particle(moon)
+    if n_moons != 0:
+        bodies.add_particle(moon)
 
     #put host_star at the origin
     bodies.position -= host_star.position

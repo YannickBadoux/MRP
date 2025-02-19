@@ -9,7 +9,7 @@ from amuse.units import units
 if __name__ == '__main__':
     velocities = [1,5] | units.kms
     phis = np.linspace(0, 2*np.pi, 10)
-    thetas = np.linspace(0, np.pi, 10)
+    thetas = np.arcos(np.linspace(-1, 1, 10))
     psis = np.linspace(0, 2*np.pi, 10)
 
     #initialize results array

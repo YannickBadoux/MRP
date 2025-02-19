@@ -1,4 +1,4 @@
-from amuse.units import units, nbody_system
+from amuse.units import units, nbody_system, constants
 from amuse.lab import Particles, Particle
 from amuse.ext.orbital_elements import generate_binaries, orbital_elements
 from amuse.io import write_set_to_file, read_set_from_file
@@ -8,7 +8,19 @@ from amuse.community.smalln.interface import SmallN
 
 import matplotlib.pyplot as plt
 import numpy as np
-from tqdm import tqdm
+
+def kinetic_energy(particle):
+    'Returns the kinetic energy of a particle'
+    return 0.5 * particle.mass * particle.velocity.length()**2
+
+def potential_energy(particle, bodies):
+    'Returns the potential energy of a particle'
+    potential = 0 | units.J
+    for body in bodies:
+        if body != particle:
+            distance = (particle.position - body.position).length()
+            potential += -constants.G * particle.mass * body.mass / distance
+    return potential
 
 def mean_square_distance(bodies):
     'Returns the mean squared distance of the particle set'
@@ -25,16 +37,47 @@ def system_check(bodies):
     of Hut & Bahcall 1983. 
     Returns a boolean indicating if the simulation needs to be stopped and a code indicating the reason.
     '''
+    stop = False
+
+    unbound = False
+    far_away = False
+    moving_away = False
+
+    #get center of mass position and velocity
+    com_position = bodies.center_of_mass()
+    com_velocity = bodies.center_of_mass_velocity()
+    for body in bodies:
+        #check if the particle is unbound, i.e. has positive total energy
+        total_energy = kinetic_energy(body) + potential_energy(body, bodies)
+        if total_energy > 0 | units.J:
+            unbound = True
+
+        #check if the particle is far away from the COM
+        if body.position.length() > 100 | units.AU:
+            far_away = True
+        
+        #check if the particle is moving away from the COM
+        position = body.position.value_in(units.AU) - com_position.value_in(units.AU)
+        velocity = body.velocity.value_in(units.km/units.s) - com_velocity.value_in(units.km/units.s)
+        if np.dot(position, velocity) > 0:
+            moving_away = True
+
+        # if any particle is unbound, far away, and moving away, stop the simulation
+        if unbound and far_away and moving_away:
+            stop = True
+            break
     
-    return stop, code
+    return stop
 
-def run_simulation(bodies, plot=False, integrator='hermite', save_path=None):
+def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, timestep_parameter=0.03):
     converter = nbody_system.nbody_to_si(bodies.mass.sum(), bodies[1].position.length())
-
+    
+    #initialize the integrator
     if integrator == 'hermite':
         gravity = Hermite(converter)
     elif integrator == 'huayno':
         gravity = Huayno(converter)
+        gravity.parameters.timestep_parameter = timestep_parameter
     elif integrator == 'smalln':
         gravity = SmallN(converter)
     else:
@@ -42,37 +85,43 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None):
 
     # gravity.parameters.timestep_parameter = 0.005
     gravity.particles.add_particles(bodies)
-
     channel = gravity.particles.new_channel_to(bodies)
 
-    end_time = 2*(bodies[0].position - bodies[3].position).length() / bodies[3].velocity.length()
-    times = np.linspace(0, end_time.value_in(units.yr), 1000) | units.yr
-
+    #calculate initial energy
     initial_energy = gravity.kinetic_energy + gravity.potential_energy
     energy_error = []
-    min_square_distance = min_square_distance(bodies)
 
-    for time in times:
+    # #calculate the initial mean square distance
+    # min_square_distance = min_square_distance(bodies)
+
+    time = 0 | units.yr
+    stop_code = None
+    while True:
+        time += 0.1 | units.yr
+        distance_13 = (bodies[0].position - bodies[2].position).length()
+        print(time, distance_13.value_in(units.AU))
         gravity.evolve_model(time)
 
         #check and save energy error
         error = np.abs((gravity.kinetic_energy + gravity.potential_energy - initial_energy) / initial_energy)
         energy_error.append(error)
-        
-        if error > 1e-2:
+        if error > 1e-2: #is this the correct threshold?
             print(f"STOP! Energy error too high: {error}, Time: {int(time.value_in(units.yr))}")
+            bodies, energy_error, stop_code = None, None, 2
             break
 
+        #update bodies
         channel.copy()
 
-        min_square_distance = min([min_square_distance, mean_square_distance(bodies)])
+        # min_square_distance = min([min_square_distance, mean_square_distance(bodies)])
 
         #check if the simulation needs to be stopped
-        stop, code = system_check(bodies)
+        stop = system_check(bodies)
         if stop:
-            print(f"STOP! Code {code}, Time: {int(time.value_in(units.yr))}")
+            stop_code = 1 # simulation finished without problems
             break
-
+        
+        #plot the system and save the figure
         if plot:
             fig = plt.figure(figsize=(6,6))
             ax = fig.add_subplot(111, projection='3d')
@@ -91,9 +140,10 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None):
             fig.savefig(f'../movie/simulation{int(time.value_in(units.day))}.png', dpi=200)
             plt.close()
 
+
     gravity.stop()
 
     if save_path is not None:
         write_set_to_file(bodies, save_path, 'amuse', overwrite_file=True)
 
-    return bodies, energy_error
+    return bodies, energy_error, time, stop_code
