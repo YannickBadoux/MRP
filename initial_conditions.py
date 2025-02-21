@@ -78,7 +78,7 @@ def generate_initial_conditions(M, m_pl, a_pl, m_moon=0.01495|units.MEarth, i_mo
 
     #put host_star at the origin
     bodies.position -= host_star.position
-    bodies.velocity -= host_star.velocity
+    # bodies.velocity -= host_star.velocity
 
     #plot the initial conditions if plot=True
     if plot:
