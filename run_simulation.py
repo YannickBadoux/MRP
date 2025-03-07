@@ -9,6 +9,7 @@ from amuse.community.smalln.interface import SmallN
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+from tqdm.auto import tqdm
 
 def kinetic_energy(particle):
     'Returns the kinetic energy of a particle'
@@ -54,7 +55,7 @@ def system_check(bodies):
             unbound = True
 
         #check if the particle is far away from the COM
-        if body.position.length() > 100 | units.AU:
+        if body.position.length() > 70 | units.AU:
             far_away = True
         
         #check if the particle is moving away from the COM
@@ -104,7 +105,7 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, tim
         error = np.abs((gravity.kinetic_energy + gravity.potential_energy - initial_energy) / initial_energy)
         energy_error.append(error)
         if error > 1e-2: #is this the correct threshold?
-            print(f"STOP! Energy error too high: {error}, Time: {(time.in_(units.yr))}")
+            tqdm.write(f"STOP! Energy error too high: {error:.2f}, Time: {time.in_(units.yr):.2f}")
             bodies, energy_error, stop_code = None, None, 2
             if plot:
                 #remove all files in the movie folder
