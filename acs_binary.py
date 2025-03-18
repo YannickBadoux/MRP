@@ -40,7 +40,7 @@ if __name__ == '__main__':
 
     #create output directory
     os.makedirs(save_path, exist_ok=True) #to save the results array
-    os.makedirs(f'{save_path}/output_velocity_{v}', exist_ok=True) #to save simulation results
+    os.makedirs(f'{save_path}/output_velocity_{v}', exist_ok=True) #to save simulation snapshsots
 
     #reproduce the results of Hut & Bahcall 1983. Equal masses and circular orbit
     m1 = 1 | units.Msun
@@ -63,6 +63,10 @@ if __name__ == '__main__':
     index = 0
     bmax = 1 | units.AU
     bmin = 0 | units.AU
+    
+    #calculate initail point density
+    point_density = n_sim/(np.pi*(bmax**2 - bmin**2))
+    step_size = 0.5 | units.AU
     while True:
         #reset the counter for the interested state
         # interested_state_counter = 0
@@ -70,7 +74,7 @@ if __name__ == '__main__':
         ionization_counter = 0
         temp_results = np.zeros((n_sim,), dtype=dtype)
 
-        tqdm.write(f"Impact parameter range: {bmin.in_(units.AU)} to {bmax.in_(units.AU)}")
+        tqdm.write(f"Impact parameter range: {bmin.in_(units.AU)} to {bmax.in_(units.AU)}, Nsim={n_sim}")
 
         #pick n_sim combinations of angles and impact parameters
         impact_parameters = np.random.uniform(bmin.value_in(units.AU), bmax.value_in(units.AU)**2, n_sim)
@@ -132,9 +136,11 @@ if __name__ == '__main__':
             tqdm.write(f'Only flybys occured. Stopping simulation.')
             break
 
-        #increase the impact parameter range so the total area is constant
+        #increase the impact parameter linearly but keep the surface density constant
         bmin = bmax
-        bmax = np.sqrt(bmax.value_in(units.AU)**2 + 1) | units.AU
+        bmax += step_size
+        area = np.pi*(bmax**2 - bmin**2)
+        n_sim = int(point_density * area)
         
     
     #save the results array

@@ -105,7 +105,7 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, tim
         error = np.abs((gravity.kinetic_energy + gravity.potential_energy - initial_energy) / initial_energy)
         energy_error.append(error)
         if error > 1e-2: #is this the correct threshold?
-            tqdm.write(f"STOP! Energy error too high: {error:.2f}, Time: {time.in_(units.yr):.2f}")
+            tqdm.write(f"STOP! Energy error too high.")
             bodies, energy_error, stop_code = None, None, 2
             if plot:
                 #remove all files in the movie folder
