@@ -17,7 +17,7 @@ if __name__ == '__main__':
     # parser.add_argument('--velocity', type=float, default=1, help='Velocity of the field star in units of the critical velocity')
     parser.add_argument('--a_sp', type=float, default=1, help='Semi-major axis of the planet in AU')
     parser.add_argument('--density', type=int, default=3, help='Density of points per square AU')
-    parser.add_argument('--far_away_distance', type=float, default=70, help='Distance at which the field star is considered far away in AU')
+    parser.add_argument('--far_away_distance', type=float, default=150, help='Distance at which the field star is considered far away in AU')
     parser.add_argument('--output', type=str, default='automatic_cs_output', help='Output directory for the results')
     args = parser.parse_args()
 
@@ -33,7 +33,7 @@ if __name__ == '__main__':
 
     #create output directory
     os.makedirs(save_path, exist_ok=True) #to save the results array
-    os.makedirs(f'{save_path}/output_sm_axis{args.a_sp}', exist_ok=True) #to save simulation snapshsots
+    os.makedirs(f'{save_path}/output_far_away_dist{args.far_away_distance}', exist_ok=True) #to save simulation snapshsots
 
     #define masses of all bodies
     m_host = 1 | units.Msun
@@ -73,7 +73,7 @@ if __name__ == '__main__':
         tqdm.write(f"Impact parameter range: {bmin.in_(units.AU)} to {bmax.in_(units.AU)}, Nsim={n_sim}")
 
         #pick n_sim combinations of angles and impact parameters
-        impact_parameters = np.random.uniform(bmin.value_in(units.AU), bmax.value_in(units.AU)**2, n_sim)
+        impact_parameters = np.random.uniform(bmin.value_in(units.AU)**2, bmax.value_in(units.AU)**2, n_sim)
         impact_parameters = np.sqrt(impact_parameters) | units.AU
         phis = np.random.uniform(0, 2*np.pi, n_sim)
         thetas = np.arccos(np.random.uniform(0, 1, n_sim))
@@ -116,6 +116,10 @@ if __name__ == '__main__':
                     tqdm.write('Collision detected, stopping.')
                     state = -2 #collision detected
                     break
+                elif stop_code == 3:
+                    tqdm.write('Simulation took too long, stopping.')
+                    state = -3 #max time reached
+                    break
                 else:
                     break
 
@@ -134,7 +138,7 @@ if __name__ == '__main__':
 
 
             #save evolved system to file and save initial conditions and state to array
-            # write_set_to_file(evolved, save_path+f'/output_sm_axis{args.a_sp}/{index}_{state}.amuse', 'amuse', overwrite_file=True)
+            write_set_to_file(evolved, save_path+f'/output_far_away_dist{args.far_away_distance}/idx{index}_{state}.amuse', 'amuse', overwrite_file=True)
             temp_results[i_sim] = (a_sp.value_in(units.au), v20.value_in(units.kms), b.value_in(units.AU), phi, theta, psi, f_pl, end_time.value_in(units.yr), state, index)
             i_sim += 1
             index += 1

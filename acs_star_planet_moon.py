@@ -73,7 +73,7 @@ if __name__ == '__main__':
         tqdm.write(f"Impact parameter range: {bmin.in_(units.AU)} to {bmax.in_(units.AU)}, Nsim={n_sim}")
 
         #pick n_sim combinations of angles and impact parameters
-        impact_parameters = np.random.uniform(bmin.value_in(units.AU), bmax.value_in(units.AU)**2, n_sim)
+        impact_parameters = np.random.uniform(bmin.value_in(units.AU)**2, bmax.value_in(units.AU)**2, n_sim)
         impact_parameters = np.sqrt(impact_parameters) | units.AU
         phis = np.random.uniform(0, 2*np.pi, n_sim)
         thetas = np.arccos(np.random.uniform(0, 1, n_sim))

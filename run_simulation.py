@@ -100,6 +100,9 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, tim
     if stop_on_collision:
         collision_detection = gravity.stopping_conditions.collision_detection
         collision_detection.enable()
+    
+    field_star = bodies[bodies.name == 'field_star'][0]
+    max_time = 5*(far_away_distance + field_star.position.length()) / field_star.velocity.length()
 
     #calculate initial energy
     initial_energy = gravity.kinetic_energy + gravity.potential_energy
@@ -143,12 +146,15 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, tim
             fig.savefig(f'../movie/simulation{int(time.value_in(units.day))}.png', dpi=200)
             plt.close()
 
-                #check if the simulation needs to be stopped
+        #check if the simulation needs to be stopped
         if system_check(bodies, far_away_distance=far_away_distance):
             stop_code = 0 # simulation finished without problems
             break
         elif stop_on_collision and collision_detection.is_set():
             stop_code = 1
+            break
+        elif time > max_time:
+            stop_code = 3
             break
 
         time += 0.1 | units.yr
