@@ -33,10 +33,9 @@ def mean_square_distance(bodies):
             square_distances.append(distance**2)
     return np.mean(square_distances)
 
-def system_check(bodies):
+def system_check(bodies, far_away_distance=70|units.AU):
     '''
-    Check if the simulation needs to be stopped according to the procedure described in Appendix A 
-    of Hut & Bahcall 1983. 
+    Check if the simulation needs to be stopped. 
     Returns a boolean indicating if the simulation needs to be stopped and a code indicating the reason.
     '''
     stop = False
@@ -45,17 +44,20 @@ def system_check(bodies):
     far_away = False
     moving_away = False
 
+    star_idx = np.where(bodies.mass > 0.1 | units.MSun)[0]
+
     #get center of mass position and velocity
     com_position = bodies.center_of_mass()
     com_velocity = bodies.center_of_mass_velocity()
-    for body in bodies:
+    for i in star_idx:
+        body = bodies[i]
         #check if the particle is unbound, i.e. has positive total energy
         total_energy = kinetic_energy(body) + potential_energy(body, bodies)
         if total_energy > 0 | units.J:
             unbound = True
 
         #check if the particle is far away from the COM
-        if body.position.length() > 70 | units.AU:
+        if body.position.length() > far_away_distance:
             far_away = True
         
         #check if the particle is moving away from the COM
@@ -71,12 +73,19 @@ def system_check(bodies):
     
     return stop
 
-def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, timestep_parameter=0.03):
+def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, timestep_parameter=0.03, far_away_distance=70|units.AU, stop_on_collision=False):
+    if plot:
+        #remove all files in the movie folder
+        files = os.listdir('../movie')
+        for file in files:
+            os.remove(f'../movie/{file}')
+
     converter = nbody_system.nbody_to_si(bodies.mass.sum(), bodies[1].position.length())
     
     #initialize the integrator
     if integrator == 'hermite':
         gravity = Hermite(converter)
+        gravity.parameters.dt_param = timestep_parameter
     elif integrator == 'huayno':
         gravity = Huayno(converter)
         gravity.parameters.timestep_parameter = timestep_parameter
@@ -85,16 +94,16 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, tim
     else:
         raise ValueError("Integrator must be one of 'hermite', 'huayno', or 'smalln'.")
 
-    # gravity.parameters.timestep_parameter = 0.005
     gravity.particles.add_particles(bodies)
     channel = gravity.particles.new_channel_to(bodies)
+
+    if stop_on_collision:
+        collision_detection = gravity.stopping_conditions.collision_detection
+        collision_detection.enable()
 
     #calculate initial energy
     initial_energy = gravity.kinetic_energy + gravity.potential_energy
     energy_error = []
-
-    # #calculate the initial mean square distance
-    # min_square_distance = min_square_distance(bodies)
 
     time = 0 | units.yr
     stop_code = None
@@ -107,23 +116,10 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, tim
         if error > 1e-2: #is this the correct threshold?
             tqdm.write(f"STOP! Energy error too high.")
             bodies, energy_error, stop_code = None, None, 2
-            if plot:
-                #remove all files in the movie folder
-                files = os.listdir('../movie')
-                for file in files:
-                    os.remove(f'../movie/{file}')
             break
 
         #update bodies
         channel.copy()
-
-        # min_square_distance = min([min_square_distance, mean_square_distance(bodies)])
-
-        #check if the simulation needs to be stopped
-        stop = system_check(bodies)
-        if stop:
-            stop_code = 1 # simulation finished without problems
-            break
         
         #plot the system and save the figure
         if plot:
@@ -146,6 +142,14 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, tim
             ax.set_zlim(-10,10)
             fig.savefig(f'../movie/simulation{int(time.value_in(units.day))}.png', dpi=200)
             plt.close()
+
+                #check if the simulation needs to be stopped
+        if system_check(bodies, far_away_distance=far_away_distance):
+            stop_code = 0 # simulation finished without problems
+            break
+        elif stop_on_collision and collision_detection.is_set():
+            stop_code = 1
+            break
 
         time += 0.1 | units.yr
 

@@ -8,18 +8,7 @@ from amuse.units.optparse import OptionParser
 import matplotlib.pyplot as plt
 import numpy as np
 
-
-def hill_radius(M, m, a):
-    '''
-    Calculate the Hill radius of a planet orbiting a star
-    Parameters:
-    M: mass of the star
-    m: mass of the planet
-    a: semi-major axis of the planet
-    Returns:
-    R_H: Hill radius of the planet
-    '''
-    return a * (m / (3 * M))**(1/3)
+from function_file import hill_radius
 
 def critical_velocity(bodies=None, m1=None, m2=None, m3=None, a=None):
     '''Calculate the critical velocity for a given system.'''
@@ -44,8 +33,25 @@ def critical_velocity(bodies=None, m1=None, m2=None, m3=None, a=None):
 
     return vc2.sqrt()
 
-def generate_initial_conditions(M, m_pl, a_pl, m_moon=0.01495|units.MEarth, i_moon=0|units.deg, f_pl=0|units.deg,
-                                plot=False, save_path='initial_conditions.amuse', n_moons=1):
+def generate_initial_conditions(M, m_pl, a_pl, m_moon=0.01495|units.MEarth, i_moon=0|units.deg, f_pl=0|units.deg, f_moon=0|units.deg,
+                                plot=False, save_path=None, n_moons=1, radii=None):
+    '''
+    Generate the initial conditions for the scattering experiment.
+    Parameters:
+    M: mass of the host star
+    m_pl: mass of the planet
+    a_pl: semi-major axis of the planet
+    m_moon: mass of the moon(s), default is the mass of Io
+    i_moon: inclination of the moon(s)
+    f_pl: true anomaly of the planet
+    f_moon: true anomaly of the moon(s)
+    plot: flag to plot the initial conditions
+    save_path: path to save the initial conditions, set to None to not save
+    n_moons: number of moons to add to the planet
+    radii: radii of the bodies, set to None for point particles
+    Returns:
+    bodies: particle set containing the host star, planet and moon(s)
+    '''
     #initialize host star and planet particles
     host_star, planet = generate_binaries(M,
                                           m_pl,
@@ -53,21 +59,24 @@ def generate_initial_conditions(M, m_pl, a_pl, m_moon=0.01495|units.MEarth, i_mo
                                           true_anomaly=f_pl)
     host_star.name = "host_star"
     planet.name = "planet"
-
+    
     if n_moons > 0:
         #place outermost moon at 1/3 of the Hill radius
-        a_moon = 1/3*hill_radius(M, m_pl, a_pl)
+        a_moon = 1/3*hill_radius(a_pl, M, m_pl)
 
         _, moon = generate_binaries(planet.mass,
                                     m_moon,
                                     a_moon,
-                                    inclination=i_moon)
+                                    inclination=i_moon,
+                                    true_anomaly=f_moon)
         
         moon.name = "moon0"
         moon.position += planet.position
         moon.velocity += planet.velocity
 
         #TODO: add code to add more moons in a resonant chain
+        if n_moons > 1:
+            raise NotImplementedError("Only one moon is currently supported")
 
     #add all to a single particle set
     bodies = Particles()
@@ -75,6 +84,9 @@ def generate_initial_conditions(M, m_pl, a_pl, m_moon=0.01495|units.MEarth, i_mo
     bodies.add_particle(planet)
     if n_moons != 0:
         bodies.add_particle(moon)
+
+    if radii is not None:
+        bodies.radius = radii
 
     #put host_star at the origin
     bodies.position -= host_star.position
@@ -92,11 +104,14 @@ def generate_initial_conditions(M, m_pl, a_pl, m_moon=0.01495|units.MEarth, i_mo
 
     return bodies
 
-def add_encounter(bodies, M, impact_parameter, v_inf, phi, theta, psi):
+def add_encounter(bodies, M, impact_parameter, v_inf, phi, theta, psi, radius=None):
     #initialize the field star
     field_star = Particle()
     field_star.mass = M
     field_star.name = 'field_star'
+
+    if radius is not None:
+        field_star.radius = radius
 
     #get planet semi-major axis
     planet = bodies[bodies.name == 'planet'][0]
@@ -145,9 +160,6 @@ if __name__ == '__main__':
     parser.add_option("--save_path", type="string", default='initial_conditions.amuse',
                         help="Path to save the initial conditions")
     options, arguments = parser.parse_args()
-
-    #set random seed
-    np.random.seed(options.seed)
 
     #generate the initial conditions
     bodies = generate_initial_conditions(options.M,

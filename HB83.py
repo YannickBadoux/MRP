@@ -1,6 +1,7 @@
 from initial_conditions import critical_velocity, generate_initial_conditions, add_encounter
 from run_simulation import run_simulation
 from analyse_result import bound
+import function_file as ff
 
 from amuse.lab import units, constants
 from amuse.io import write_set_to_file
@@ -9,16 +10,6 @@ import numpy as np
 from argparse import ArgumentParser
 import os
 import time
-
-def max_impact_parameter(v, a, C=4, e=0):
-    '''Calculates the maximum impact parameter for a given velocity, 
-    semi-major axis and eccentricity.'''
-    D = 0.6*(1+e)
-    return (C/v + D) * a
-
-def v20_from_vinf(v_inf, a, M):
-    '''Calculates the velocity of the field star at 20 a_pl'''
-    return np.sqrt(v_inf**2 + 4*constants.G*M/(20*a))
 
 if __name__ == '__main__':
     parser = ArgumentParser(description='Run a Monte Carlo simulation of an encounter between an equal mass binary and a field star.')
@@ -50,9 +41,9 @@ if __name__ == '__main__':
 
     #calculate the initial velocity of the field star
     v_inf = v * v_crit
-    v20 = v20_from_vinf(v_inf, a, m3)
+    v20 = ff.vinit_from_vinf(v_inf, 20*a, m1+m2)
 
-    b_max = max_impact_parameter(v, a)
+    b_max = ff.max_impact_parameter(v, a)
     print(f"v={v}, v_crit={v_crit.in_(units.kms)}, b_max={b_max.in_(units.AU)}")
 
     #impact parameters with probability homogeneous in b**2
