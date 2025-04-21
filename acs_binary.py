@@ -94,7 +94,7 @@ if __name__ == '__main__':
             bodies = add_encounter(bodies, m3, b, v20, phi, theta, psi)
 
             #rename particles
-            bodies.name = ['star1', 'star2', 'star3']
+            bodies.name = ['star1', 'star2', 'field_star']
 
             #run the simulation until the energy error is small enough
             timestep_parameter = 0.03 #default value for Huayno

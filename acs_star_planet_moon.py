@@ -47,8 +47,8 @@ if __name__ == '__main__':
 
     #calculate the initial velocity of the field star
     v_inf = 3 | units.kms # roughly the 3D velocity dispersion of Orion (Wei et al., 2025)
-    v20 = v_inf
-    # v20 = v20_from_vinf(v_inf, a_sp, m_field) #TODO: update the calculation of v20
+    v20 = ff.vinit_from_vinf(v_inf, 20*a_sp, m_host+m_pl+m_moon) #TODO: 20*a_sp does not work for close in planets?
+
     print(f'Initial velocity of the field star at 20 a_pl: {v20.in_(units.kms)}')
 
     #initialize results array #TODO: include moon parameters
@@ -113,10 +113,17 @@ if __name__ == '__main__':
                         tqdm.write('Simulation failed, stopping.')
                         state = -1 #simulation failed
                         break
+                elif stop_code == 1:
+                    tqdm.write('Collision detected, stopping.')
+                    state = -2 #collision
+                    break
+                elif stop_code == 3:
+                    tqdm.write('Simulation took too long, stopping.')
+                    state = -3
                 else:
                     break
 
-            if not state == 3:
+            if state == 0:
                 #check the state of the evolved system
                 host_star, planet, moon, field_star = evolved
                 
