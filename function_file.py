@@ -42,3 +42,29 @@ def potential_energy(particle, bodies):
 def total_energy(particle, bodies):
     'Returns the total energy of a particle'
     return kinetic_energy(particle) + potential_energy(particle, bodies)
+
+def cross_section(data, state, normalize=False, a_sp=None):
+    state_mask = data['state']==state
+    und_mask = (data['state']==-1) | (data['state']==-3) #Failed or Timeout
+
+    b_max = np.max(data['b'][state_mask]) | units.AU
+
+    cs = np.pi * b_max**2 * np.sum(state_mask) / len(state_mask)
+    stat_error = 1/np.sqrt(np.sum(state_mask)) * cs
+    system_error = np.pi * b_max**2 * np.sum(und_mask) / len(state_mask)
+
+    if normalize and a_sp is not None:
+        cs /= np.pi * a_sp**2
+        stat_error /= np.pi * a_sp**2
+        system_error /= np.pi * a_sp**2
+    if normalize and a_sp is None:
+        raise ValueError("a_sp must be provided for normalization")
+
+    return cs, stat_error, system_error
+
+def state_dict():
+    state_dict = {0: ('Other', 'Other'),
+              1: ('FFPM', 'Free Floating Planet Moon Pair'),
+              2: ('FFPWM', 'Free Floating Planet Without Moon'),
+              3: ('FFMBP', 'Free Floating Moon, Bound Planet')}
+    return state_dict
