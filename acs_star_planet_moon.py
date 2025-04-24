@@ -10,24 +10,30 @@ import numpy as np
 from argparse import ArgumentParser
 import os
 import time
-from tqdm.auto import tqdm
 
 
 if __name__ == '__main__':
     parser = ArgumentParser(description='Run a Monte Carlo simulation of an encounter between an equal mass binary and a field star.')
-    # parser.add_argument('--velocity', type=float, default=1, help='Velocity of the field star in units of the critical velocity')
     parser.add_argument('--a_sp', type=float, default=1, help='Semi-major axis of the planet in AU')
-    parser.add_argument('--density', type=int, default=3, help='Density of points per square AU')
+    parser.add_argument('--density', type=int, default=10, help='Number of scattering experiments per pi*a_sp^2')
     parser.add_argument('--output', type=str, default='automatic_cs_output', help='Output directory for the results')
+    parser.add_argument('--time_limit', type=float, default=0, help='Time limit for the simulation in hours, set to the same as slurm time limit. Set to 0 for no limit.')
+    parser.add_argument('--b_init', type=float, default=0, help='Initial impact parameter in AU, use if you want to start from a specific impact parameter')
+    parser.add_argument('--n_init', type=int, default=0, help='Initial number of simulations, use if you want to start from a specific number of simulations')
     args = parser.parse_args()
 
-    # n_sim = args.n_sim
     save_path = args.output
-    point_density = args.density | units.AU**-2 #number of simulations per square AU
+    a_sp = args.a_sp | units.AU
+    point_density = args.density / (np.pi * a_sp**2) #number of simulations per planet orbit area
+    slurm_time_limit = args.time_limit * 3600 #convert to seconds
+    b_init = args.b_init | units.AU
+    n_init = args.n_init
 
-    tqdm.write(f"Running simulation with a_sp {args.a_sp} and {point_density} simulation density")
+    print(f"Running simulation with a_sp {args.a_sp} and {point_density} simulation density")
 
     start_time = time.time()
+    if slurm_time_limit > 0:
+        max_time = start_time + slurm_time_limit - 15 * 60 # leave 5 minutes
 
     #create output directory
     os.makedirs(save_path, exist_ok=True) #to save the results array
@@ -38,8 +44,6 @@ if __name__ == '__main__':
     m_pl = 1 | units.Mjupiter
     m_moon = 1.4815e23 | units.kg #mass of Ganymede, use 8.93e22 kg for Io
     m_field = 1 | units.Msun
-
-    a_sp = args.a_sp | units.AU
 
     #calculate critical velocity of the system, approximate planet and moon as one body
     v_crit = critical_velocity(m1=m_host, m2=m_pl+m_moon, m3=m_field, a=a_sp)
@@ -52,17 +56,22 @@ if __name__ == '__main__':
     print(f'Initial velocity of the field star at 20 a_pl: {v20.in_(units.kms)}')
 
     #initialize results array #TODO: include moon parameters
-    dtype = [('a_sp', 'f8'), ('v20','f8'), ('b','f8'), ('phi', 'f8'), ('theta', 'f8'), ('psi', 'f8'), ('f_pl', 'f8'), ('f_moon', 'f8'), ('end_time', 'f8'), ('state', 'u1'), ('index', 'u4')]
+    dtype = [('a_sp', 'f8'), ('v20','f8'), ('b','f8'), ('phi', 'f8'), ('theta', 'f8'), ('psi', 'f8'), ('f_pl', 'f8'), ('f_moon', 'f8'), ('end_time', 'f8'), ('state', 'i1'), ('index', 'u4')]
     results = np.zeros((0,), dtype=dtype)
 
     #iterate over impact parameters
     index = 0
     bmax = a_sp
-    bmin = 0 | units.AU
+    bmin = b_init
     area = np.pi*(bmax**2 - bmin**2)
     
-    #calculate initail point density
-    n_sim = int(point_density * area)
+    if n_init == 0:
+        #calculate initial number of simulations based on the area and point density
+        n_sim = int(point_density * area)
+    else:
+        #use the given number of simulations if previous simulations were run
+        n_sim = n_init
+
     step_size = a_sp
     while True:
         #reset the counter for the interested states
@@ -70,7 +79,7 @@ if __name__ == '__main__':
         ffpnm_counter = 0
         temp_results = np.zeros((n_sim,), dtype=dtype)
 
-        tqdm.write(f"Impact parameter range: {bmin.in_(units.AU)} to {bmax.in_(units.AU)}, Nsim={n_sim}")
+        print(f"Impact parameter range: {bmin.in_(units.AU)} to {bmax.in_(units.AU)}, Nsim={n_sim}")
 
         #pick n_sim combinations of angles and impact parameters
         impact_parameters = np.random.uniform(bmin.value_in(units.AU)**2, bmax.value_in(units.AU)**2, n_sim)
@@ -82,7 +91,7 @@ if __name__ == '__main__':
         f_moons = np.random.uniform(0, 2*np.pi, n_sim)
 
         i_sim = 0
-        for b, phi, theta, psi, f_pl, f_moon in tqdm(zip(impact_parameters, phis, thetas, psis, f_pls, f_moons), total=n_sim):
+        for b, phi, theta, psi, f_pl, f_moon in zip(impact_parameters, phis, thetas, psis, f_pls, f_moons):
             #generate host star, planet and moon
             bodies = generate_initial_conditions(M = m_host,
                                                  m_pl = m_pl,
@@ -97,28 +106,32 @@ if __name__ == '__main__':
             bodies = add_encounter(bodies, m_field, b, v20, phi, theta, psi)
 
             state = 0 #other state
+            planet_ejected = False
+            moon_ejected = False
 
             #run the simulation until the energy error is small enough
             timestep_parameter = 0.03 #0.03 is default value for Huayno and Hermite
             i=0
             while i < 4:
                 evolved, _, end_time, stop_code = run_simulation(bodies, integrator='hermite',
-                                                       timestep_parameter=timestep_parameter)
+                                                       timestep_parameter=timestep_parameter,
+                                                       far_away_distance=70 * a_sp,
+                                                       stop_on_collision=True)
                 #decrease the timestep if the energy error is too high
                 if stop_code == 2:
                     timestep_parameter *= 0.5
                     i+=1
-                    tqdm.write(f'Rerunning simulation with {timestep_parameter}')
+                    print(f'Rerunning simulation with {timestep_parameter}')
                     if i == 4:
-                        tqdm.write('Simulation failed, stopping.')
+                        print('Simulation failed, stopping.')
                         state = -1 #simulation failed
                         break
                 elif stop_code == 1:
-                    tqdm.write('Collision detected, stopping.')
+                    print('Collision detected, stopping.')
                     state = -2 #collision
                     break
                 elif stop_code == 3:
-                    tqdm.write('Simulation took too long, stopping.')
+                    print('Simulation took too long, stopping.')
                     state = -3
                 else:
                     break
@@ -140,10 +153,10 @@ if __name__ == '__main__':
                         state = 2 # free floating planet no moon
                         ffpnm_counter += 1
 
-                # #check if moon is ejected
-                # if not bound(host_star, moon) and not bound(field_star, moon) and not bound(planet, moon) and not planet_ejected:
-                #     moon_ejected = True
-                #     state = 'ffmbp' # free floating moon bound planet
+                #check if moon is ejected while planet is bound to a star
+                if not bound(host_star, moon) and not bound(field_star, moon) and not bound(planet, moon) and not planet_ejected:
+                    moon_ejected = True
+                    state = 3 # free floating moon bound planet
 
 
                 #save evolved system to file and save initial conditions and state to array
@@ -151,16 +164,25 @@ if __name__ == '__main__':
             temp_results[i_sim] = (a_sp.value_in(units.au), v20.value_in(units.kms), b.value_in(units.AU), phi, theta, psi, f_pl, f_moon, end_time.value_in(units.yr), state, index)
             i_sim += 1
             index += 1
+
+            #check time
+            if slurm_time_limit > 0:
+                if time.time() > max_time:
+                    print(f"SLURM time limit reached. Saving results and stopping simulation.")
+                    print(f'Stopped at b_min = {bmin.in_(units.AU)} and b_max = {bmax.in_(units.AU)} at sim {i_sim} of {n_sim}.')
+                    break
         
         results = np.concatenate((results, temp_results))
 
-        tqdm.write(f"Finished, {ffpm_counter} ({ffpm_counter/n_sim*100:.1f}%) ffps with moons and {ffpnm_counter} ({ffpnm_counter/n_sim*100:.1f}%) ffps without moon found.")
+        #check if the simulation was stopped due to time limit
+        if slurm_time_limit > 0:
+            if time.time() > max_time:
+                break
+
+        print(f"Finished, {ffpm_counter} ({ffpm_counter/n_sim*100:.1f}%) ffps with moons and {ffpnm_counter} ({ffpnm_counter/n_sim*100:.1f}%) ffps without moon found.")
         if ffpm_counter == 0 and ffpnm_counter == 0:
-            tqdm.write(f'No planet ejections occured. Stopping simulation.')
+            print(f'No planet ejections occured. Stopping simulation.')
             break
-        # if time.time()-start_time > 3600:
-        #     tqdm.write(f"Simulation took too long. Stopping.")
-        #     break
 
         #increase the impact parameter linearly but keep the surface density constant
         bmin = bmax
@@ -172,5 +194,5 @@ if __name__ == '__main__':
     #save the results array
     np.save(save_path+f'/results_semi-major_{a_sp}.npy', results)
 
-    tqdm.write(f"Simulation took {time.time()-start_time} seconds")
-    tqdm.write(f"Results saved to {save_path}")
+    print(f"Simulation took {time.time()-start_time} seconds")
+    print(f"Results saved to {save_path}")

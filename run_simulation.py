@@ -9,7 +9,6 @@ from amuse.community.smalln.interface import SmallN
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-from tqdm.auto import tqdm
 
 def kinetic_energy(particle):
     'Returns the kinetic energy of a particle'
@@ -101,6 +100,7 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, tim
         collision_detection = gravity.stopping_conditions.collision_detection
         collision_detection.enable()
     
+    #max model time, taken from Wang et al. 2024
     field_star = bodies[bodies.name == 'field_star'][0]
     max_time = 5*(far_away_distance + field_star.position.length()) / field_star.velocity.length()
 
@@ -117,7 +117,7 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, tim
         error = np.abs((gravity.kinetic_energy + gravity.potential_energy - initial_energy) / initial_energy)
         energy_error.append(error)
         if error > 1e-2: #is this the correct threshold?
-            tqdm.write(f"STOP! Energy error too high.")
+            print(f"STOP! Energy error too high.")
             bodies, energy_error, stop_code = None, None, 2
             break
 

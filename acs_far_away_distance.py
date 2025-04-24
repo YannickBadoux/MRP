@@ -49,7 +49,7 @@ if __name__ == '__main__':
     #calculate the initial velocity of the field star
     v_inf = 3 | units.kms # roughly the 3D velocity dispersion of Orion (Wei et al., 2025)
     v20 = v_inf
-    v20 = ff.vinit_from_vinf(v_inf, 20*a_sp, m_host+m_pl) #TODO: 20*a_sp does not work for close in planets
+    v20 = ff.vinit_from_vinf(v_inf, 20*a_sp, m_host+m_pl) #TODO: does 20*a_sp work for close in planets?
     print(f'Initial velocity of the field star at 20 a_pl: {v20.in_(units.kms)}')
 
     #initialize results array
@@ -62,7 +62,7 @@ if __name__ == '__main__':
     bmin = 0 | units.AU
     area = np.pi*(bmax**2 - bmin**2)
     
-    #calculate initail point density
+    #calculate initial number of simulations
     n_sim = int(point_density * area)
     step_size = a_sp
     while True:
