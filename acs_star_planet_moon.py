@@ -20,7 +20,10 @@ if __name__ == '__main__':
     parser.add_argument('--time_limit', type=float, default=0, help='Time limit for the simulation in hours, set to the same as slurm time limit. Set to 0 for no limit.')
     parser.add_argument('--b_init', type=float, default=0, help='Initial impact parameter in AU, use if you want to start from a specific impact parameter')
     parser.add_argument('--n_init', type=int, default=0, help='Initial number of simulations, use if you want to start from a specific number of simulations')
+    parser.add_argument('--integrator', type=str, default='hermite', help='Integrator to use for the simulation, options are hermite, huayno, smalln and ph4')
     args = parser.parse_args()
+
+    # np.random.seed(2208) #set random seed for reproducibility
 
     save_path = args.output
     a_sp = args.a_sp | units.AU
@@ -29,11 +32,11 @@ if __name__ == '__main__':
     b_init = args.b_init | units.AU
     n_init = args.n_init
 
-    print(f"Running simulation with a_sp {args.a_sp} and {point_density} simulation density")
+    print(f"Running simulation with a_sp {args.a_sp} and {args.density} simulation density")
 
     start_time = time.time()
     if slurm_time_limit > 0:
-        max_time = start_time + slurm_time_limit - 15 * 60 # leave 5 minutes
+        max_time = start_time + slurm_time_limit - 5 * 60 # leave 5 minutes
 
     #create output directory
     os.makedirs(save_path, exist_ok=True) #to save the results array
@@ -74,6 +77,7 @@ if __name__ == '__main__':
 
     step_size = a_sp
     while True:
+        start_time_b_range = time.time()
         #reset the counter for the interested states
         ffpm_counter = 0
         ffpnm_counter = 0
@@ -113,15 +117,17 @@ if __name__ == '__main__':
             timestep_parameter = 0.03 #0.03 is default value for Huayno and Hermite
             i=0
             while i < 4:
-                evolved, _, end_time, stop_code = run_simulation(bodies, integrator='hermite',
+                start_time_single = time.time()
+                evolved, _, end_time, stop_code = run_simulation(bodies, integrator=args.integrator,
                                                        timestep_parameter=timestep_parameter,
                                                        far_away_distance=70 * a_sp,
                                                        stop_on_collision=True)
+                # print(f"Simulation took {time.time()-start_time_single} seconds")
                 #decrease the timestep if the energy error is too high
                 if stop_code == 2:
                     timestep_parameter *= 0.5
                     i+=1
-                    print(f'Rerunning simulation with {timestep_parameter}')
+                    print(f'Rerunning simulation with dt_param={timestep_parameter}')
                     if i == 4:
                         print('Simulation failed, stopping.')
                         state = -1 #simulation failed
@@ -171,6 +177,8 @@ if __name__ == '__main__':
                     print(f"SLURM time limit reached. Saving results and stopping simulation.")
                     print(f'Stopped at b_min = {bmin.in_(units.AU)} and b_max = {bmax.in_(units.AU)} at sim {i_sim} of {n_sim}.')
                     break
+        
+        print(f"Average time per simulation: {(time.time()-start_time_b_range)/n_sim:.2f} seconds")
         
         results = np.concatenate((results, temp_results))
 

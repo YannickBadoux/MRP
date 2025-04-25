@@ -5,6 +5,7 @@ from amuse.io import write_set_to_file, read_set_from_file
 from amuse.community.huayno.interface import Huayno
 from amuse.community.hermite.interface import Hermite
 from amuse.community.smalln.interface import SmallN
+from amuse.community.ph4.interface import ph4
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -90,6 +91,10 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, tim
         gravity.parameters.timestep_parameter = timestep_parameter
     elif integrator == 'smalln':
         gravity = SmallN(converter)
+    elif integrator == 'ph4':
+        timestep_parameter = 0.014 * timestep_parameter / 0.03 # default value for ph4 is 0.014
+        gravity = ph4(converter)
+        gravity.parameters.timestep_parameter = timestep_parameter
     else:
         raise ValueError("Integrator must be one of 'hermite', 'huayno', or 'smalln'.")
 
@@ -103,6 +108,7 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, tim
     #max model time, taken from Wang et al. 2024
     field_star = bodies[bodies.name == 'field_star'][0]
     max_time = 5*(far_away_distance + field_star.position.length()) / field_star.velocity.length()
+    diag_time = max_time / 5000
 
     #calculate initial energy
     initial_energy = gravity.kinetic_energy + gravity.potential_energy
@@ -157,7 +163,7 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, tim
             stop_code = 3
             break
 
-        time += 0.1 | units.yr
+        time += diag_time
 
 
     gravity.stop()
