@@ -104,10 +104,15 @@ if __name__ == '__main__':
                                                  i_moon = 0|units.deg,
                                                  f_pl = f_pl,
                                                  f_moon = f_moon,
-                                                 n_moons = 1)
+                                                 n_moons = 1,
+                                                 radii = [1|units.Rsun, 1|units.Rjupiter, 2631|units.km])
 
             #add field star to encounter
-            bodies = add_encounter(bodies, m_field, b, v20, phi, theta, psi)
+            bodies = add_encounter(bodies, m_field, b, v20, phi, theta, psi, radius=1|units.Rsun)
+
+            #print distances between bodies
+            print(bodies[-1].position.lengths().in_(units.AU), bodies[0].position.lengths().in_(units.AU))
+
 
             state = 0 #other state
             planet_ejected = False
