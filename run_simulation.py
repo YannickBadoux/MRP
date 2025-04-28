@@ -124,7 +124,7 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, tim
         energy_error.append(error)
         if error > 1e-2: #is this the correct threshold?
             print(f"STOP! Energy error too high.")
-            bodies, energy_error, stop_code = None, None, 2
+            bodies, energy_error, stop_code = bodies, None, 2
             break
 
         #update bodies
@@ -158,6 +158,10 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, tim
             break
         elif stop_on_collision and collision_detection.is_set():
             stop_code = 1
+            for ci in range(len(collision_detection.particles(0))):
+                collision = Particles(particles=[collision_detection.particles(0)[ci], collision_detection.particles(1)[ci]])
+                collision = collision.get_intersecting_subset_in(bodies)
+                print(f"Collision between {collision[0].name} and {collision[1].name}, at time {time.value_in(units.yr):.2f} yr.", end=' ')
             break
         elif time > max_time:
             stop_code = 3

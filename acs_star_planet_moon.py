@@ -113,21 +113,6 @@ if __name__ == '__main__':
 
         i_sim = 0
         for b, phi, theta, psi, f_pl, f_moon in zip(impact_parameters, phis, thetas, psis, f_pls, f_moons):
-            #generate host star, planet and moon
-            bodies = generate_initial_conditions(M = m_host,
-                                                 m_pl = m_pl,
-                                                 a_pl = a_sp,
-                                                 a_pm = a_pm,
-                                                 m_moon = m_moon,
-                                                 i_moon = 0|units.deg,
-                                                 f_pl = f_pl,
-                                                 f_moon = f_moon,
-                                                 n_moons = 1,
-                                                 radii = [1|units.Rsun, 1|units.Rjupiter, 2631|units.km])
-
-            #add field star to encounter
-            bodies = add_encounter(bodies, m_field, b, v20, phi, theta, psi, radius=1|units.Rsun)
-
             state = 0 #other state
             planet_ejected = False
             moon_ejected = False
@@ -136,27 +121,42 @@ if __name__ == '__main__':
             timestep_parameter = 0.03 #0.03 is default value for Huayno and Hermite
             i=0
             while i < 4:
-                start_time_single = time.time()
+                #generate host star, planet and moon
+                bodies = generate_initial_conditions(M = m_host,
+                                                    m_pl = m_pl,
+                                                    a_pl = a_sp,
+                                                    a_pm = a_pm,
+                                                    m_moon = m_moon,
+                                                    i_moon = 0|units.deg,
+                                                    f_pl = f_pl,
+                                                    f_moon = f_moon,
+                                                    n_moons = 1,
+                                                    radii = [1|units.Rsun, 1|units.Rjupiter, 2631|units.km])
+
+                #add field star to encounter
+                bodies = add_encounter(bodies, m_field, b, v20, phi, theta, psi, radius=1|units.Rsun)
+
+                #run the simulation
                 evolved, _, end_time, stop_code = run_simulation(bodies, integrator=args.integrator,
                                                        timestep_parameter=timestep_parameter,
                                                        far_away_distance=70 * a_sp,
                                                        stop_on_collision=True)
-                # print(f"Simulation took {time.time()-start_time_single} seconds")
+
                 #decrease the timestep if the energy error is too high
                 if stop_code == 2:
                     timestep_parameter *= 0.5
                     i+=1
-                    print(f'Rerunning simulation with dt_param={timestep_parameter}')
+                    print(f'Rerunning simulation {index} with dt_param={timestep_parameter}')
                     if i == 4:
-                        print('Simulation failed, stopping.')
+                        print(f'Simulation {index} failed, stopping.')
                         state = -1 #simulation failed
                         break
                 elif stop_code == 1:
-                    print('Collision detected, stopping.')
+                    print(f'Simulation {index}, b = {b.value_in(units.AU):.2f} AU')
                     state = -2 #collision
                     break
                 elif stop_code == 3:
-                    print('Simulation took too long, stopping.')
+                    print(f'Simulation {index} took too long, stopping.')
                     state = -3
                 else:
                     break
@@ -184,8 +184,8 @@ if __name__ == '__main__':
                     state = 3 # free floating moon bound planet
 
 
-                #save evolved system to file and save initial conditions and state to array
-                write_set_to_file(evolved, save_path+f'/output_sm_axis{args.a_sp}/{index}_{state}.amuse', 'amuse', overwrite_file=True)
+            #save evolved system to file and save initial conditions and state to array
+            write_set_to_file(evolved, save_path+f'/output_sm_axis{args.a_sp}/{index}_{state}.amuse', 'amuse', overwrite_file=True)
             temp_results[i_sim] = (a_sp.value_in(units.au), v20.value_in(units.kms), b.value_in(units.AU), phi, theta, psi, f_pl, f_moon, end_time.value_in(units.yr), state, index)
             i_sim += 1
             index += 1
