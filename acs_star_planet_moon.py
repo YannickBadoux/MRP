@@ -13,7 +13,7 @@ import time
 
 
 if __name__ == '__main__':
-    parser = ArgumentParser(description='Run a Monte Carlo simulation of an encounter between an equal mass binary and a field star.')
+    parser = ArgumentParser(description='Run a Monte Carlo simulation of an encounter between a field star and a star-planet-moon system. Single moon only.')
     parser.add_argument('--a_sp', type=float, default=1, help='Semi-major axis of the planet in AU')
     parser.add_argument('--density', type=int, default=10, help='Number of scattering experiments per pi*a_sp^2')
     parser.add_argument('--output', type=str, default='automatic_cs_output', help='Output directory for the results')
@@ -21,6 +21,9 @@ if __name__ == '__main__':
     parser.add_argument('--b_init', type=float, default=0, help='Initial impact parameter in AU, use if you want to start from a specific impact parameter')
     parser.add_argument('--n_init', type=int, default=0, help='Initial number of simulations, use if you want to start from a specific number of simulations')
     parser.add_argument('--integrator', type=str, default='hermite', help='Integrator to use for the simulation, options are hermite, huayno, smalln and ph4')
+    parser.add_argument('--a_pm', type=float, default=0, help='Semi-major axis of the moon in AU, set to 0 for default value of 1/3 Hill radius')
+    parser.add_argument('--moon_res_ratio', type=float, default=0, help='''Resonance period ratio of the moon w.r.t. a moon at 1/3 Hill radius, set to 0 for no resonance.
+                         Set --a_pm to 0 if you want to use this option.''')
     args = parser.parse_args()
 
     # np.random.seed(2208) #set random seed for reproducibility
@@ -47,6 +50,20 @@ if __name__ == '__main__':
     m_pl = 1 | units.Mjupiter
     m_moon = 1.4815e23 | units.kg #mass of Ganymede, use 8.93e22 kg for Io
     m_field = 1 | units.Msun
+
+    #moon semi-major axis
+    if args.a_pm == 0 and args.moon_res_ratio == 0:
+        a_pm = None #1/3 Hill radius is handled in the initial conditions
+        print('Moon semi-major axis: 1/3 Hill radius.')
+    elif args.a_pm != 0 and args.moon_res_ratio == 0:
+        a_pm = args.a_pm | units.AU # set moon semi-major axis to user input
+        print(f'Moon semi-major axis manually set to: {a_pm.in_(units.AU)}')
+    elif args.a_pm == 0 and args.moon_res_ratio != 0:
+        hill_radius = ff.hill_radius(a_sp, m_host, m_pl)
+        a_pm = ff.resonance_semi_major_axis(1/3 * hill_radius, m_pl, m_moon, m_moon, args.moon_res_ratio) # set moon semi-major axis as if in resonance with a moon at 1/3 Hill radius
+        print(f'Moon semi-major axis: {a_pm.in_(units.AU)} with resonance ratio {args.moon_res_ratio}.')
+    else:
+        raise ValueError('You can only set one of --moon_res_ratio or --a_pm.')
 
     #calculate critical velocity of the system, approximate planet and moon as one body
     v_crit = critical_velocity(m1=m_host, m2=m_pl+m_moon, m3=m_field, a=a_sp)
@@ -100,6 +117,7 @@ if __name__ == '__main__':
             bodies = generate_initial_conditions(M = m_host,
                                                  m_pl = m_pl,
                                                  a_pl = a_sp,
+                                                 a_pm = a_pm,
                                                  m_moon = m_moon,
                                                  i_moon = 0|units.deg,
                                                  f_pl = f_pl,
@@ -109,10 +127,6 @@ if __name__ == '__main__':
 
             #add field star to encounter
             bodies = add_encounter(bodies, m_field, b, v20, phi, theta, psi, radius=1|units.Rsun)
-
-            #print distances between bodies
-            print(bodies[-1].position.lengths().in_(units.AU), bodies[0].position.lengths().in_(units.AU))
-
 
             state = 0 #other state
             planet_ejected = False

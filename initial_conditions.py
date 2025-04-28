@@ -33,7 +33,7 @@ def critical_velocity(bodies=None, m1=None, m2=None, m3=None, a=None):
 
     return vc2.sqrt()
 
-def generate_initial_conditions(M, m_pl, a_pl, m_moon=0.01495|units.MEarth, i_moon=0|units.deg, f_pl=0|units.deg, f_moon=0|units.deg,
+def generate_initial_conditions(M, m_pl, a_pl, a_pm=None, m_moon=0.01495|units.MEarth, i_moon=0|units.deg, f_pl=0|units.deg, f_moon=0|units.deg,
                                 plot=False, save_path=None, n_moons=1, radii=None):
     '''
     Generate the initial conditions for the scattering experiment.
@@ -41,6 +41,7 @@ def generate_initial_conditions(M, m_pl, a_pl, m_moon=0.01495|units.MEarth, i_mo
     M: mass of the host star
     m_pl: mass of the planet
     a_pl: semi-major axis of the planet
+    a_pm: semi-major axis of the moon(s), leave as None to use 1/3 of the Hill radius
     m_moon: mass of the moon(s), default is the mass of Io
     i_moon: inclination of the moon(s)
     f_pl: true anomaly of the planet
@@ -62,7 +63,10 @@ def generate_initial_conditions(M, m_pl, a_pl, m_moon=0.01495|units.MEarth, i_mo
     
     if n_moons > 0:
         #place outermost moon at 1/3 of the Hill radius
-        a_moon = 1/3*hill_radius(a_pl, M, m_pl)
+        if a_pm is None:
+            a_moon = 1/3*hill_radius(a_pl, M, m_pl)
+        else:
+            a_moon = a_pm
 
         _, moon = generate_binaries(planet.mass,
                                     m_moon,

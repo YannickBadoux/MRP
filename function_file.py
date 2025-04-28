@@ -68,3 +68,17 @@ def state_dict():
               2: ('FFPWM', 'Free Floating Planet Without Moon'),
               3: ('FFMBP', 'Free Floating Moon, Bound Planet')}
     return state_dict
+
+def resonance_semi_major_axis(a1, M, m1, m2, res):
+    '''
+    Calculates the semi-major axis of a body in resonance with another body.
+    a1: semi-major axis of the first body
+    M: mass of the central body
+    m1: mass of the first body
+    m2: mass of the second body, the one in resonance
+    res: resonance ratio, >1 for larger orbit, <1 for smaller orbit
+    '''
+    period1 = (a1**3 * 4*np.pi**2 / (constants.G * (M+m1)))**(1/2)
+    period2 = period1 * res
+    a2 = (constants.G*(M+m2) * period2**2 / (4*np.pi**2))**(1/3)
+    return a2
