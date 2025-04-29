@@ -44,6 +44,13 @@ def total_energy(particle, bodies):
     return kinetic_energy(particle) + potential_energy(particle, bodies)
 
 def cross_section(data, state, normalize=False, a_sp=None):
+    '''
+    Calculates the cross section for a given state.
+    data: data from the simulation
+    state: state of the system
+    normalize: if True, normalizes the cross section with the orbit area, requires a_sp to be set
+    a_sp: semi-major axis of the system, used to normalize the cross section
+    '''
     state_mask = data['state']==state
     und_mask = (data['state']==-1) | (data['state']==-3) #Failed or Timeout
 
