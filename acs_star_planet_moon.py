@@ -24,6 +24,7 @@ if __name__ == '__main__':
     parser.add_argument('--a_pm', type=float, default=0, help='Semi-major axis of the moon in AU, set to 0 for default value of 1/3 Hill radius')
     parser.add_argument('--moon_res_ratio', type=float, default=0, help='''Resonance period ratio of the moon w.r.t. a moon at 1/3 Hill radius, set to 0 for no resonance.
                          Set --a_pm to 0 if you want to use this option.''')
+    parser.add_argument('--a_pm_hill', type=float, default=0, help='''Semi-major axis of the moon as a fraction of the planets Hill radius, set to 0 for default value of 1/3 Hill radius.''')
     args = parser.parse_args()
 
     # np.random.seed(2208) #set random seed for reproducibility
@@ -52,16 +53,20 @@ if __name__ == '__main__':
     m_field = 1 | units.Msun
 
     #moon semi-major axis
-    if args.a_pm == 0 and args.moon_res_ratio == 0:
+    if args.a_pm == 0 and args.moon_res_ratio == 0 and args.a_pm_hill == 0:
         a_pm = None #1/3 Hill radius is handled in the initial conditions
         print('Moon semi-major axis: 1/3 Hill radius.')
-    elif args.a_pm != 0 and args.moon_res_ratio == 0:
+    elif args.a_pm != 0 and args.moon_res_ratio == 0 and args.a_pm_hill == 0:
         a_pm = args.a_pm | units.AU # set moon semi-major axis to user input
         print(f'Moon semi-major axis manually set to: {a_pm.in_(units.AU)}')
-    elif args.a_pm == 0 and args.moon_res_ratio != 0:
+    elif args.a_pm == 0 and args.moon_res_ratio != 0 and args.a_pm_hill == 0:
         hill_radius = ff.hill_radius(a_sp, m_host, m_pl)
         a_pm = ff.resonance_semi_major_axis(1/3 * hill_radius, m_pl, m_moon, m_moon, args.moon_res_ratio) # set moon semi-major axis as if in resonance with a moon at 1/3 Hill radius
         print(f'Moon semi-major axis: {a_pm.in_(units.AU)} with resonance ratio {args.moon_res_ratio}.')
+    elif args.a_pm == 0 and args.moon_res_ratio == 0 and args.a_pm_hill != 0:
+        hill_radius = ff.hill_radius(a_sp, m_host, m_pl)
+        a_pm = args.a_pm_hill * hill_radius
+        print(f'Moon semi-major axis: {a_pm.in_(units.AU)} with Hill radius fraction {args.a_pm_hill}.')
     else:
         raise ValueError('You can only set one of --moon_res_ratio or --a_pm.')
 
