@@ -163,6 +163,7 @@ if __name__ == '__main__':
                 elif stop_code == 3:
                     print(f'Simulation {index} took too long, stopping.')
                     state = -3
+                    break
                 else:
                     break
 
