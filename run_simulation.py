@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
+from analyse_result import find_bound_particles, bound
+
 def kinetic_energy(particle, bodies):
     'Returns the kinetic energy of a particle relative to the center of mass'
     vcom = bodies.center_of_mass_velocity()
@@ -68,11 +70,42 @@ def system_check(bodies, far_away_distance=70|units.AU):
         if np.dot(position, velocity) > 0:
             moving_away = True
 
-        # if any particle is unbound, far away, and moving away, stop the simulation
+        # if any star is unbound, far away and moving away, dynamical encounter is over
         if unbound and far_away and moving_away:
             stop = True
             break
     
+    if not stop:
+        host_star, planet, moon, field_star = bodies
+        #check if planet is unbound from both stars and stop simulation
+        if not bound(host_star, planet) and not bound(field_star, planet):
+            # check if moon is bound to planet and split accordingly
+            if bound(planet, moon):
+                ffp = Particles()
+                ffp.add_particle(planet)
+                ffp.add_particle(moon)
+
+                other_bodies = Particles()
+                other_bodies.add_particle(host_star)
+                other_bodies.add_particle(field_star)
+            else:
+                ffp = Particles()
+                ffp.add_particle(planet)
+
+                other_bodies = Particles()
+                other_bodies.add_particle(host_star)
+                other_bodies.add_particle(field_star)
+                other_bodies.add_particle(moon)
+
+            ffp_com = ffp.center_of_mass()
+            ffp_vcom = ffp.center_of_mass_velocity()
+
+            ffp_rel_pos = ffp.position - bodies.center_of_mass()
+            ffp_rel_vel = ffp.velocity - bodies.center_of_mass_velocity()
+            #check if the ffp is far away and moving away from the COM
+            if (ffp_rel_pos.length() > far_away_distance) and (np.dot(ffp_rel_pos.value_in(units.AU), ffp_rel_vel.value_in(units.km/units.s)) > 0):
+                stop = True
+
     return stop
 
 def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, timestep_parameter=0.03, far_away_distance=70|units.AU, stop_on_collision=False):
