@@ -100,8 +100,8 @@ def system_check(bodies, far_away_distance=70|units.AU):
             ffp_com = ffp.center_of_mass()
             ffp_vcom = ffp.center_of_mass_velocity()
 
-            ffp_rel_pos = ffp.position - bodies.center_of_mass()
-            ffp_rel_vel = ffp.velocity - bodies.center_of_mass_velocity()
+            ffp_rel_pos = ffp_com - bodies.center_of_mass()
+            ffp_rel_vel = ffp_vcom - bodies.center_of_mass_velocity()
             #check if the ffp is far away and moving away from the COM
             if (ffp_rel_pos.length() > far_away_distance) and (np.dot(ffp_rel_pos.value_in(units.AU), ffp_rel_vel.value_in(units.km/units.s)) > 0):
                 stop = True
