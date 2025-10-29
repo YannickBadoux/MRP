@@ -33,10 +33,11 @@ def critical_velocity(bodies=None, m1=None, m2=None, m3=None, a=None):
 
     return vc2.sqrt()
 
-def generate_initial_conditions(M, m_pl, a_pl, a_pm=None, m_moon=0.01495|units.MEarth, i_moon=0|units.deg, f_pl=0|units.deg, f_moon=0|units.deg,
-                                plot=False, save_path=None, n_moons=1, radii=None):
+def generate_initial_conditions(M, m_pl, a_pl, a_pm=None, m_moon=0.01495|units.MEarth, i_moon=0|units.deg, f_pl=0|units.deg, f_moon=0|units.deg, e_pl=0, e_pm=0,
+                                plot=False, save_path=None, n_moons=1, radii=None, MMR=None, path_to_ic=None):
     '''
     Generate the initial conditions for the scattering experiment.
+    
     Parameters:
     M: mass of the host star
     m_pl: mass of the planet
@@ -50,44 +51,70 @@ def generate_initial_conditions(M, m_pl, a_pl, a_pm=None, m_moon=0.01495|units.M
     save_path: path to save the initial conditions, set to None to not save
     n_moons: number of moons to add to the planet
     radii: radii of the bodies, set to None for point particles
+    MMR: flag to put moons in mean motion resonance
+    path_to_ic: path to the initial conditions file, if None, the initial conditions will be generated from scratch
+    
     Returns:
     bodies: particle set containing the host star, planet and moon(s)
     '''
+    if path_to_ic is not None:
+        #load the initial conditions from a file
+        bodies = read_set_from_file(path_to_ic, 'amuse')
+        return bodies
+    
     #initialize host star and planet particles
     host_star, planet = generate_binaries(M,
                                           m_pl,
                                           a_pl,
-                                          true_anomaly=f_pl)
+                                          true_anomaly=f_pl,
+                                          eccentricity=e_pl)
     host_star.name = "host_star"
+    host_star.type = "star"
     planet.name = "planet"
+    planet.type = "planet"
     
+    # add no moons if n_moons == 0
     if n_moons > 0:
-        #place outermost moon at 1/3 of the Hill radius
-        if a_pm is None:
-            a_moon = 1/3*hill_radius(a_pl, M, m_pl)
-        else:
-            a_moon = a_pm
+        #generate 1 moon
+        if n_moons == 1:               
+            #place moon at 1/3 of the Hill radius if no semi-major axis is given
+            if a_pm is None:
+                a_moon = 1/3*hill_radius(a_pl, M, m_pl)
+            else:
+                a_moon = a_pm
 
-        _, moon = generate_binaries(planet.mass,
-                                    m_moon,
-                                    a_moon,
-                                    inclination=i_moon,
-                                    true_anomaly=f_moon)
+            _, moon = generate_binaries(planet.mass,
+                                        m_moon,
+                                        a_moon,
+                                        inclination=i_moon,
+                                        true_anomaly=f_moon,
+                                        eccentricity=e_pm)
+            
+            moon.name = "moon0"
+            moon.type = "moon"
+            moon.position += planet.position
+            moon.velocity += planet.velocity
         
-        moon.name = "moon0"
-        moon.position += planet.position
-        moon.velocity += planet.velocity
+        elif n_moons > 1:
+            #check if m_moon is a single value or an array
+            try:
+                _ = len(m_moon)
+            except TypeError:
+                # if m_moon is a single value, make it an array of the same size as n_moons
+                m_moon = [m_moon] * n_moons
 
-        #TODO: add code to add more moons in a resonant chain
-        if n_moons > 1:
-            raise NotImplementedError("Only one moon is currently supported")
+            #check if m_moon is the same size as n_moons
+            if len(m_moon) != n_moons:
+                raise ValueError("m_moon must be the same size as n_moons or a single scalar")
+            
+
 
     #add all to a single particle set
     bodies = Particles()
     bodies.add_particle(host_star)
     bodies.add_particle(planet)
     if n_moons != 0:
-        bodies.add_particle(moon)
+        bodies.add_particles(moon)
 
     if radii is not None:
         bodies.radius = radii
@@ -113,6 +140,7 @@ def add_encounter(bodies, M, impact_parameter, v_inf, phi, theta, psi, radius=No
     field_star = Particle()
     field_star.mass = M
     field_star.name = 'field_star'
+    field_star.type = 'star'
 
     if radius is not None:
         field_star.radius = radius
@@ -143,6 +171,50 @@ def add_encounter(bodies, M, impact_parameter, v_inf, phi, theta, psi, radius=No
                            -v_inf.value_in(units.kms) * np.cos(theta)] | units.kms
     
     bodies.add_particle(field_star)
+    return bodies
+
+def generate_planetary_system(M, m_pl, a_pl, e_pl, i_pl, f_pl, lan_pl, aop_pl, m_moon=1.4815e23 | units.kg):
+    '''Generate a planetary system with a host star, planet(s), and moon(s).
+    M: mass of the host star
+    m_pl: mass of the planet(s)
+    a_pl: semi-major axis of the planet(s)
+    e_pl: eccentricity of the planet(s)
+    i_pl: inclination of the planet(s)
+    f_pl: true anomaly of the planet(s)
+    lan_pl: longitude of ascending node of the planet(s)
+    aop_pl: argument of periapsis of the planet(s)
+    m_moon: mass of the moon(s), default is the mass of Ganymede
+    Returns: Particles object containing the host star, planet(s), and moon(s)
+    '''
+    bodies = Particles()
+
+    for i in range(len(M)):
+        host_star, planet = generate_binaries(M,
+                                              m_pl[i],
+                                              a_pl[i],
+                                              true_anomaly=f_pl[i],
+                                              eccentricity=e_pl[i],
+                                              inclination=i_pl[i],
+                                              longitude_of_ascending_node=lan_pl[i],
+                                              argument_of_periapsis=aop_pl[i])
+        host_star.name = 'host_star'
+        host_star.type = 'star'
+        planet.name = f'planet{i}'
+        planet.type = 'planet'
+
+        _, moon = generate_binaries(planet.mass,
+                                    m_moon,
+                                    1/3 * hill_radius(a_pl[i], M, m_pl[i]))
+        moon.name = f'moon{i}'
+        moon.type = 'moon'
+        moon.position += planet.position
+        moon.velocity += planet.velocity
+
+        if i == 0: #only add the host star once
+            bodies.add_particle(host_star)
+        bodies.add_particle(planet)
+        bodies.add_particle(moon)
+
     return bodies
 
 

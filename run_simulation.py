@@ -1,7 +1,6 @@
 from amuse.units import units, nbody_system, constants
-from amuse.lab import Particles, Particle
-from amuse.ext.orbital_elements import generate_binaries, orbital_elements
-from amuse.io import write_set_to_file, read_set_from_file
+from amuse.lab import Particles
+from amuse.io import write_set_to_file
 from amuse.community.huayno.interface import Huayno
 from amuse.community.hermite.interface import Hermite
 from amuse.community.smalln.interface import SmallN
@@ -11,12 +10,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-def kinetic_energy(particle):
-    'Returns the kinetic energy of a particle'
-    return 0.5 * particle.mass * particle.velocity.length()**2
+def kinetic_energy(particle, bodies):
+    'Returns the kinetic energy of a particle relative to the center of mass'
+    vcom = bodies.center_of_mass_velocity()
+    relative_velocity = particle.velocity - vcom
+    return 0.5 * particle.mass * relative_velocity.length()**2
 
 def potential_energy(particle, bodies):
-    'Returns the potential energy of a particle'
+    'Returns the potential energy of a particle relative to the center of mass'
     potential = 0 | units.J
     for body in bodies:
         if body != particle:
@@ -51,13 +52,14 @@ def system_check(bodies, far_away_distance=70|units.AU):
     com_velocity = bodies.center_of_mass_velocity()
     for i in star_idx:
         body = bodies[i]
+        body_pos = body.position - com_position
         #check if the particle is unbound, i.e. has positive total energy
-        total_energy = kinetic_energy(body) + potential_energy(body, bodies)
+        total_energy = kinetic_energy(body, bodies) + potential_energy(body, bodies)
         if total_energy > 0 | units.J:
             unbound = True
 
         #check if the particle is far away from the COM
-        if body.position.length() > far_away_distance:
+        if body_pos.length() > far_away_distance:
             far_away = True
         
         #check if the particle is moving away from the COM
@@ -74,6 +76,32 @@ def system_check(bodies, far_away_distance=70|units.AU):
     return stop
 
 def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, timestep_parameter=0.03, far_away_distance=70|units.AU, stop_on_collision=False):
+    '''
+    Run single scattering experiment with the given bodies.
+    
+    Parameters:
+    bodies: AMUSE particle set containing the bodies to simulate
+    plot: flag to plot the simulation at each diagnostic time
+    integrator: integrator to use, must be one of 'hermite' (default), 'huayno', 'smalln' or 'ph4'
+    save_path: path to save the simulation results, set to None to not save
+    timestep_parameter: parameter for the integrator, default is 0.03
+    far_away_distance: distance from the center of mass to consider a particle far away, default is 70 AU
+    stop_on_collision: flag to stop the simulation on collision, default is False. bodies must have radius attribute
+    
+    Returns:
+    bodies: AMUSE particle set containing the bodies after the simulation
+    energy_error: list of energy errors at each diagnostic time
+    time: time at which the simulation stopped
+    stop_code: code indicating the reason for stopping the simulation
+    '''
+
+    if stop_on_collision:
+        #check if bodies have radii
+        try:
+            radii = bodies.radius
+        except AttributeError:
+            raise ValueError("Bodies must have radii to use collision detection.")
+
     if plot:
         #remove all files in the movie folder
         files = os.listdir('../movie')
@@ -92,7 +120,7 @@ def run_simulation(bodies, plot=False, integrator='hermite', save_path=None, tim
     elif integrator == 'smalln':
         gravity = SmallN(converter)
     elif integrator == 'ph4':
-        timestep_parameter = 0.014 * timestep_parameter / 0.03 # default value for ph4 is 0.014
+        timestep_parameter = 0.014 * timestep_parameter / 0.03 # default value for ph4 is 0.014 instead of 0.03
         gravity = ph4(converter)
         gravity.parameters.timestep_parameter = timestep_parameter
     else:

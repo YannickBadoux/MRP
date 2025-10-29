@@ -1,6 +1,8 @@
 from amuse.lab import units, constants
+from amuse.ext.orbital_elements import generate_binaries, orbital_elements
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 def max_impact_parameter(v, a, C=4, e=0):
     '''Calculates the maximum impact parameter for a given velocity, 
@@ -43,29 +45,40 @@ def total_energy(particle, bodies):
     'Returns the total energy of a particle'
     return kinetic_energy(particle) + potential_energy(particle, bodies)
 
-def cross_section(data, state, normalize=False, a_sp=None):
-    '''
-    Calculates the cross section for a given state.
-    data: data from the simulation
-    state: state of the system
-    normalize: if True, normalizes the cross section with the orbit area, requires a_sp to be set
-    a_sp: semi-major axis of the system, used to normalize the cross section
-    '''
-    state_mask = data['state']==state
-    und_mask = (data['state']==-1) | (data['state']==-3) #Failed or Timeout
+def cross_section(data, state, normalize=False):
+    a_sp = data['a_sp'][0] | units.AU
 
-    b_max = np.max(data['b'][state_mask]) | units.AU
+    #calculate the impact parameter ranges in the data
+    max_in_data = np.max(data['b']) 
+    #round up to the nearest multiple of a_sp
+    max_b_range = np.ceil(max_in_data/a_sp.value_in(units.AU)) * a_sp.value_in(units.AU)
 
-    cs = np.pi * b_max**2 * np.sum(state_mask) / len(state_mask)
+    b_range_mins = np.arange(0, max_b_range, a_sp.value_in(units.AU))
+    b_range_maxes = np.append(b_range_mins[1:], max_b_range)
+
+    bin_index = 0
+    #find the last bin where the interested state is present
+    for i in range(len(b_range_maxes)):
+        b_range = (b_range_mins[i], b_range_maxes[i])
+        mask = (data['b'] >= b_range[0]) & (data['b'] < b_range[1]) & (data['state'] == state)
+        if np.sum(mask) > 0:
+            bin_index = max(bin_index, i)
+
+    b_max = b_range_maxes[bin_index] | units.AU # maximum possible generated impact parameter for state
+
+    #only consider the impact parameters that are less than the maximum
+    n_sim = np.sum(data['b'] < b_max.value_in(units.AU))
+    state_mask = (data['state']==state) & (data['b'] < b_max.value_in(units.AU))
+    und_mask = (data['state']==-1) | (data['state']==-3) & (data['b'] < b_max.value_in(units.AU)) #Failed or Timeout
+
+    cs = np.pi * b_max**2 * np.sum(state_mask) / n_sim
     stat_error = 1/np.sqrt(np.sum(state_mask)) * cs
-    system_error = np.pi * b_max**2 * np.sum(und_mask) / len(state_mask)
+    system_error = np.pi * b_max**2 * np.sum(und_mask) / n_sim
 
-    if normalize and a_sp is not None:
+    if normalize:
         cs /= np.pi * a_sp**2
         stat_error /= np.pi * a_sp**2
         system_error /= np.pi * a_sp**2
-    if normalize and a_sp is None:
-        raise ValueError("a_sp must be provided for normalization")
 
     return cs, stat_error, system_error
 
@@ -74,6 +87,16 @@ def state_dict():
               1: ('FFPM', 'Free Floating Planet Moon Pair'),
               2: ('FFPWM', 'Free Floating Planet Without Moon'),
               3: ('FFMBP', 'Free Floating Moon, Bound Planet')}
+    return state_dict
+
+def all_state_dict():
+    state_dict = {0: ('Other', 'Other'),
+              1: ('FFPM', 'Free Floating Planet Moon Pair'),
+              2: ('FFPWM', 'Free Floating Planet Without Moon'),
+              3: ('FFMBP', 'Free Floating Moon, Bound Planet'),
+              -1: ('Failed', 'Too high energy error'),
+              -2: ('Collision', 'Collision'),
+              -3: ('Timeout', 'Timeout'),}
     return state_dict
 
 def resonance_semi_major_axis(a1, M, m1, m2, res):
@@ -89,3 +112,51 @@ def resonance_semi_major_axis(a1, M, m1, m2, res):
     period2 = period1 * res
     a2 = (constants.G*(M+m2) * period2**2 / (4*np.pi**2))**(1/3)
     return a2
+
+def plot_orbit(primary, secondary):
+    """Calculate and plot the orbit of a binary system.
+    Args:
+        primary: body object representing the primary object
+        secondary: body object representing the secondary object
+    Returns:
+        orbit_plot: line object representing the plotted orbit
+        prograde: boolean indicating if the orbit is prograde or retrograde
+    """
+    #calculate the orbital elements
+    m1, m2, a, e, _, i, lan, ap = orbital_elements(primary, secondary)
+
+    prograde = True if i < 90 | units.deg else False
+    
+    true_anomalies = np.linspace(0, 2 * np.pi, 100)
+    xs = []
+    ys = []
+    for f in true_anomalies:
+        _, sec = generate_binaries(m1, m2, a, e,f, i, lan, ap)
+        xs.append(sec.x.value_in(units.AU))
+        ys.append(sec.y.value_in(units.AU))
+
+    return plt.plot(xs, ys, lw=1), prograde
+
+def plot_bodies(bodies):
+    """Plot the x,y positions of the bodies in the simulation.
+    Args:
+        bodies: particle set containing the bodies
+    """
+    markers = {'star': 's', 'planet': 'o', 'moon': '.'}
+
+    for body in bodies:
+        plt.scatter(body.x.value_in(units.AU), body.y.value_in(units.AU), label=body.name, marker=markers[body.type])
+    plt.xlabel('x [AU]')
+    plt.ylabel('y [AU]')
+    plt.legend()
+    # plt.show()
+
+def angular_momentum_deficit(planet, moon, normalize=False):
+    '''Calculates the angular momentum deficit of two particles'''
+    mu = constants.G * (planet.mass)
+    _,_,a,e,_,i,_,_ = orbital_elements(planet, moon)
+
+    AMD = moon.mass*mu.sqrt()*a.sqrt()*(1 - np.sqrt(1 - e**2)*np.cos(i.value_in(units.rad)))
+    if normalize:
+        AMD = AMD / (moon.mass * mu.sqrt() * a.sqrt())
+    return AMD
